@@ -1,0 +1,51 @@
+version: '3'
+
+volumes:
+  adn_db_vol:
+
+services:
+  postgres:
+    image: postgres:12
+    volumes:
+      - adn_db_vol:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_HOST=localhost
+      - POSTGRES_PASSWORD=admin123
+      - POSTGRES_DB=adn_qazna_db
+    ports:
+      - "8435:5432"
+    restart: always
+
+  web:
+    image: adn_service_api
+    build: .
+    command: uwsgi --http 0.0.0.0:5000 --module task_manager_api.wsgi:app
+    env_file:
+      - ./.flaskenv
+    environment:
+      - DATABASE_URI=postgres://postgres:admin123@postgres:5432/adn_qazna_db
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND_URL=redis://redis
+    volumes:
+      - ./task_manager_api:/code/task_manager_api
+      - ./db/:/db/
+    ports:
+      - "5004:5000"
+    depends_on:
+      - postgres
+
+  redis:
+    image: redis
+
+  celery:
+    image: adn_service_api
+    command: "celery worker -A task_manager_api.celery_app:app"
+    env_file:
+      - ./.flaskenv
+    volumes:
+      - .:/code
+    depends_on:
+      - web
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/2
+      - CELERY_RESULT_BACKEND_URL=redis://redis
